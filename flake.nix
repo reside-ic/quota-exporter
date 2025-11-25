@@ -13,7 +13,7 @@
       packages.quota-exporter = pkgs.buildGoModule {
         name = "quota-exporter";
         src = lib.sources.sourceFilesBySuffices ./. [ ".go" ".mod" ".sum" ];
-        vendorHash = "sha256-CbIdxlBAyiTqkTdX2bjP5kEgi8uk59aHTU/sJ6jA9M4=";
+        vendorHash = "sha256-ZNZkFmA9w8LNcz2RiXUTbsfP+UgzOcq1EjH2et6keSk=";
         meta.mainProgram = "quota-exporter";
       };
 

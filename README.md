@@ -12,6 +12,8 @@ quota-exporter --mountpoint /home
 ```
 
 Multiple mountpoints can be included by repeating the `--mountpoint` option.
+Alternatively, you can also run `quota-exporter` with the `--all` flag, which
+will cause it to export quotas for all mountpoints that support it.
 
 By default the exporter will listen on port 10018 and export the metrics
 under the `/metrics` path. The port can be overriden using the `--listen` option.
@@ -47,11 +49,22 @@ Debian bookworm and above.
 It would be possible to support older kernel version by using the existing
 `quotactl` system call, though the old interface is more tedious to use.
 
-The old system call uses the path to the block device as an argument, which
-requires the application to figure out which block device is behind the
-given mount point.
+The old system call expects the path to the block device as an argument,
+which requires the application to figure out which block device is behind
+the given mount point. The new system call expects an `O_PATH` file
+descriptor of the mountpoint instead.
 
 ### Filesystems
 
 This has only been tested against ext4 filesystems. Other file systems may
 not work out of the box.
+
+### On-disk quota files
+
+Linux supports two ways of storing quota data on an ext4 filesystem. They
+can either be stored as a regular file (often called `aquota.user`) or as a
+hidden inode. The latter can be enabled by passing `-O quota` to `mkfs.ext4`
+or `tune2fs`.
+
+`quota-exporter` should work with either schemes, but using the hidden inode is
+generally more reliable and is recommended.
