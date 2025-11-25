@@ -6,6 +6,7 @@ import (
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -22,6 +23,7 @@ func main() {
 		kingpin.Fatalf("Either --mountpoint or --all must be provided")
 	}
 
+	prometheus.MustRegister(version.NewCollector("quota_exporter"))
 	prometheus.MustRegister(NewQuotaCollector(*allFlag, *mountpointsFlag))
 	http.Handle("/metrics", promhttp.Handler())
 
