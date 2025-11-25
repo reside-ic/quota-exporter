@@ -10,12 +10,19 @@ import (
 )
 
 var listenFlag = kingpin.Flag("listen", "address on which to expose the exporter").Default(":10018").String()
-var mountpointsFlag = kingpin.Flag("mountpoint", "path to the mountpoints whose quotas should be exported").Required().Strings()
+var mountpointsFlag = kingpin.Flag("mountpoint", "path to the mountpoints whose quotas should be exported").Strings()
+var allFlag = kingpin.Flag("all", "export data for all mount points with quotas").Bool()
 
 func main() {
 	kingpin.Parse()
 
-	prometheus.MustRegister(NewQuotaCollector(*mountpointsFlag))
+	if len(*mountpointsFlag) > 0 && *allFlag {
+		kingpin.Fatalf("--mountpoint and --all are mutually exclusive")
+	} else if len(*mountpointsFlag) == 0 && (!*allFlag) {
+		kingpin.Fatalf("Either --mountpoint or --all must be provided")
+	}
+
+	prometheus.MustRegister(NewQuotaCollector(*allFlag, *mountpointsFlag))
 	http.Handle("/metrics", promhttp.Handler())
 
 	log.Printf("Serving metrics on %v", *listenFlag)

@@ -3,10 +3,13 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
 
+	"github.com/moby/sys/mountinfo"
 	"golang.org/x/sys/unix"
 )
 
@@ -42,6 +45,10 @@ const (
 	QIF_DQBLKSIZE_BITS uint64 = 10
 	QIF_DQBLKSIZE      uint64 = (1 << QIF_DQBLKSIZE_BITS)
 	BlockSize          uint64 = QIF_DQBLKSIZE
+)
+
+const (
+	DQF_SYS_FILE uint32 = (1 << 16)
 )
 
 type if_dqblk struct {
@@ -185,6 +192,8 @@ func GetQuotas(path string, type_ int) ([]Quota, error) {
 type QuotaInfo struct {
 	BlockSoftLimitGracePeriod time.Duration
 	InodeSoftLimitGracePeriod time.Duration
+
+	Flags uint32
 }
 
 func GetQuotaInfo(path string, type_ int) (QuotaInfo, error) {
@@ -203,5 +212,42 @@ func GetQuotaInfo(path string, type_ int) (QuotaInfo, error) {
 	return QuotaInfo{
 		BlockSoftLimitGracePeriod: time.Duration(data.dqi_bgrace) * time.Second,
 		InodeSoftLimitGracePeriod: time.Duration(data.dqi_igrace) * time.Second,
+		Flags:                     data.dqi_flags,
 	}, nil
+}
+
+func hasMountOption(options []string, needle string) bool {
+	for _, v := range options {
+		before, _, _ := strings.Cut(v, "=")
+		if before == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// Check if the given quota type is enabled for a mount point.
+//
+// This uses a similar logic as implemented in quota-tools.
+// See https://git.kernel.org/pub/scm/utils/quota/quota-tools.git/tree/quotasys.c?id=1478041b1909bd536af95353a5f184c67a02ed3b#n590
+func QuotaIsEnabled(info *mountinfo.Info, type_ int) (bool, error) {
+	// On ext4, when quotas are stored in hidden inodes (ie. DQF_SYS_FILE), quotas
+	// are available regardless of mount options.
+	if info.FSType == "ext4" {
+		qinfo, err := GetQuotaInfo(info.Mountpoint, type_)
+		if err == nil && (qinfo.Flags&DQF_SYS_FILE != 0) {
+			return true, nil
+		}
+	}
+
+	options := strings.Split(info.VFSOptions, ",")
+	if type_ == USRQUOTA {
+		return hasMountOption(options, "quota") ||
+			hasMountOption(options, "usrquota") ||
+			hasMountOption(options, "usrjquota"), nil
+	} else if type_ == GRPQUOTA {
+		return hasMountOption(options, "grpquota") || hasMountOption(options, "grpjquota"), nil
+	} else {
+		return false, fmt.Errorf("Invalid quota type: %d", type_)
+	}
 }

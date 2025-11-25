@@ -5,11 +5,13 @@ import (
 	"os/user"
 	"strconv"
 
+	"github.com/moby/sys/mountinfo"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type QuotaCollector struct {
-	mountpoints []string
+	allMountpoints bool
+	mountpoints    []string
 
 	userSpaceUsed        *prometheus.Desc
 	userSpaceHardLimit   *prometheus.Desc
@@ -22,10 +24,11 @@ type QuotaCollector struct {
 	userInodesGracePeriod *prometheus.Desc
 }
 
-func NewQuotaCollector(mountpoints []string) *QuotaCollector {
+func NewQuotaCollector(allMountpoints bool, mountpoints []string) *QuotaCollector {
 	userLabels := []string{"mountpoint", "user"}
 	return &QuotaCollector{
-		mountpoints: mountpoints,
+		allMountpoints: allMountpoints,
+		mountpoints:    mountpoints,
 
 		userSpaceUsed:        prometheus.NewDesc("quota_user_space_used_bytes", "Number of bytes currently occupied by a user", userLabels, nil),
 		userSpaceHardLimit:   prometheus.NewDesc("quota_user_space_hard_limit_bytes", "Hard-limit for space usage for a user", userLabels, nil),
@@ -59,8 +62,51 @@ func lookupUser(id int) string {
 	}
 }
 
+// List all mountpoints that have quotas enabled.
+// We do this by looking for the usrquota mount option. This is similar to what quota-tools does.
+func listQuotaMountpoints() ([]string, error) {
+	mounts, err := mountinfo.GetMounts(func(info *mountinfo.Info) (skip, stop bool) {
+		ok, err := QuotaIsEnabled(info, USRQUOTA)
+		if err != nil {
+			log.Printf("Error while checking if mountpoint '%s' supports quotas: %v", info.Mountpoint, err)
+			return true, false
+		} else {
+			return !ok, false
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// This filters out bind mounts from the result.
+	// For each (major, minor) pair of devices, it takes the first entry found in `/proc/self/mounts`.
+	//
+	// Inspired by the conversation at https: //github.com/prometheus/node_exporter/issues/600
+	type Key struct{ major, minor int }
+	found := make(map[Key]bool)
+	var result []string
+	for _, info := range mounts {
+		key := Key{major: info.Major, minor: info.Minor}
+		if !found[key] {
+			result = append(result, info.Mountpoint)
+			found[key] = true
+		}
+	}
+	return result, nil
+}
+
 func (c *QuotaCollector) Collect(ch chan<- prometheus.Metric) {
-	for _, path := range c.mountpoints {
+	var err error
+	mountpoints := c.mountpoints
+	if c.allMountpoints {
+		mountpoints, err = listQuotaMountpoints()
+		if err != nil {
+			log.Printf("Error while listing mountpoints %v", err)
+			return
+		}
+	}
+
+	for _, path := range mountpoints {
 		info, err := GetQuotaInfo(path, USRQUOTA)
 		if err != nil {
 			log.Printf("Error while getting quota information for mountpoint %s: %v", path, err)

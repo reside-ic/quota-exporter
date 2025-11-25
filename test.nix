@@ -7,7 +7,7 @@
         systemd.services.quota-exporter = {
           wantedBy = [ "multi-user.target" ];
           serviceConfig = {
-            ExecStart = "${lib.getExe self'.packages.quota-exporter} --mountpoint /data";
+            ExecStart = "${lib.getExe self'.packages.quota-exporter} --all";
           };
         };
         users.users.alice = { isNormalUser = true; };
