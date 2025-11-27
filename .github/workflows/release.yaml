@@ -17,3 +17,9 @@ jobs:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         goos: linux
         goarch: amd64
+        md5sum: false
+        sha256sum: true
+        ldflags: |
+          -X github.com/prometheus/common/version.Version=${{ github.event.release.tag_name }}
+          -X github.com/prometheus/common/version.Revision=${{ github.sha }}
+          -X github.com/prometheus/common/version.Branch=${{ github.ref }}
